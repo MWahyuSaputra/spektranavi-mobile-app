@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "476480942266",
+    "project_id": "spektra-navi",
+    "storage_bucket": "spektra-navi.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:476480942266:android:d63bca686c7ac3a127d283",
+        "android_client_info": {
+          "package_name": "com.example.spektranavi"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAB8NUUj6JUpT_r1So6oU0JtnqwIUvT-Jk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
