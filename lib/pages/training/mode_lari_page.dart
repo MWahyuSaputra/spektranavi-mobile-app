@@ -67,13 +67,19 @@ class _ModeLariPageState extends State<ModeLariPage> {
       if (!mounted) return;
       setState(() {
         _elapsed = DateTime.now().difference(_startTime);
-        _metrics.record(DeviceServices.instance.esp32.data.value);
       });
     });
 
+    DeviceServices.instance.esp32.data.addListener(_onTelemetry);
     DeviceServices.instance.esp32.data.addListener(_captureMapOrigin);
     _captureMapOrigin();
     _setupVoice();
+  }
+
+  /// Metrik sesi dihitung realtime dari setiap frame telemetry, bukan
+  /// hanya sekali per detik.
+  void _onTelemetry() {
+    _metrics.record(DeviceServices.instance.esp32.data.value);
   }
 
   Future<void> _setupVoice() async {
@@ -105,6 +111,12 @@ class _ModeLariPageState extends State<ModeLariPage> {
       _selectedDirection = direction;
     });
 
+    // Kirim aba-aba ke broker supaya perangkat/penerima lain bisa membacanya.
+    DeviceServices.instance.mqtt.publishDirection(
+      mode: 'lari',
+      direction: direction,
+    );
+
     try {
       await _tts.stop();
       await _tts.speak(phrase);
@@ -121,6 +133,11 @@ class _ModeLariPageState extends State<ModeLariPage> {
   }
 
   Future<void> _stopVoice() async {
+    DeviceServices.instance.mqtt.publishDirection(
+      mode: 'lari',
+      direction: 'STOP',
+    );
+
     try {
       await _tts.stop();
     } catch (e) {
@@ -136,6 +153,7 @@ class _ModeLariPageState extends State<ModeLariPage> {
   @override
   void dispose() {
     _timer.cancel();
+    DeviceServices.instance.esp32.data.removeListener(_onTelemetry);
     DeviceServices.instance.esp32.data.removeListener(_captureMapOrigin);
 
     _tts.stop();
@@ -192,8 +210,6 @@ class _ModeLariPageState extends State<ModeLariPage> {
       peakHeart: _metrics.peakHeart,
       midValue: _metrics.bestReactionMs == null ? "--" : "${_metrics.bestReactionMs!.round()}ms",
       midSub: _metrics.bestReactionMs == null ? "Best reaction time belum tersedia" : "Best RT",
-      rightValue: _metrics.laneDeviation == null ? "--" : "${_metrics.laneDeviation!.toStringAsFixed(2)}m",
-      rightSub: _metrics.laneDeviation == null ? "Lane deviation belum tersedia" : "Lane dev.",
     );
 
     Navigator.pop(context, session);
@@ -267,17 +283,21 @@ class _ModeLariPageState extends State<ModeLariPage> {
                                 : Colors.redAccent,
                           ),
                           const SizedBox(width: 6),
-                          Text(
-                            esp32.connected
-                                ? "Wearable ESP32 terhubung"
-                                : "Wearable ESP32 tidak terhubung",
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
+                          Expanded(
+                            child: Text(
+                              esp32.connected
+                                  ? "Wearable ESP32 terhubung"
+                                  : "Wearable ESP32 tidak terhubung",
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
-                          const Spacer(),
+                          const SizedBox(width: 8),
                           Text(
                             widget.athlete.name.toUpperCase(),
                             style: const TextStyle(

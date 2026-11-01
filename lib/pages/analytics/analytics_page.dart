@@ -68,8 +68,6 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                   leftSub: "Max: ${s.peakHeart}",
                   midValue: s.midValue,
                   midSub: s.midSub,
-                  rightValue: s.rightValue,
-                  rightSub: s.rightSub,
                 );
               }).toList(),
             ),

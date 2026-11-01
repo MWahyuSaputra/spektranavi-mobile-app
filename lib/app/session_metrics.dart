@@ -1,11 +1,10 @@
 import 'dart:math';
 
 import '../services/esp32_service.dart';
-import 'app_config.dart';
 
-/// Mengisi metrik latihan yang sudah ada, hanya saat sumber contoh aktif.
+/// Menghitung metrik latihan (rata-rata BPM, rata-rata waktu reaksi,
+/// puncak BPM, dan best RT) dari telemetry ESP32 selama sesi berjalan.
 class SessionMetrics {
-  final Random _random = Random();
   int _heartTotal = 0;
   int _heartCount = 0;
   double _reactionTotal = 0;
@@ -13,32 +12,70 @@ class SessionMetrics {
   int peakHeart = 0;
   double? reactionMs;
   double? bestReactionMs;
-  double? laneDeviation;
-  int blocks = 0;
-  int attempts = 0;
 
-  int get averageHeart => _heartCount == 0 ? 0 : (_heartTotal / _heartCount).round();
+  /// Sample terakhir yang sudah dihitung. Dipakai untuk mendeteksi
+  /// sample baru, karena telemetry mempertahankan nilai terakhir saat
+  /// field-nya tidak dikirim ulang (tidak boleh dihitung dobel).
+  List<int> _heartSamples = const [];
+  List<int> _reactionSamples = const [];
 
-  double? get averageReactionMs => _reactionCount == 0 ? null : _reactionTotal / _reactionCount;
+  bool _started = false;
+
+  int get averageHeart =>
+      _heartCount == 0 ? 0 : (_heartTotal / _heartCount).round();
+
+  double? get averageReactionMs =>
+      _reactionCount == 0 ? null : _reactionTotal / _reactionCount;
 
   void record(Esp32TelemetryData data) {
-    if (!AppConfig.esp32Mock || !data.connected) return;
-    final bpm = data.heartRateBpm;
-    if (bpm != null) {
+    if (!data.connected) return;
+
+    // Snapshot pertama = kondisi sebelum sesi dimulai, jangan dihitung.
+    if (!_started) {
+      _started = true;
+      _heartSamples = data.heartSamples;
+      _reactionSamples = data.reactionSamples;
+      return;
+    }
+
+    _recordHeartSamples(data.heartSamples);
+    _recordReactionSamples(data.reactionSamples);
+
+    reactionMs = data.reactionMs;
+  }
+
+  void _recordHeartSamples(List<int> samples) {
+    for (final bpm in _newSamples(_heartSamples, samples)) {
+      if (bpm <= 0) continue;
       _heartTotal += bpm;
       _heartCount++;
       peakHeart = max(peakHeart, bpm);
     }
-    reactionMs = data.reactionMs;
-    if (reactionMs != null) {
-      _reactionTotal += reactionMs!;
+    _heartSamples = samples;
+  }
+
+  void _recordReactionSamples(List<int> samples) {
+    for (final ms in _newSamples(_reactionSamples, samples)) {
+      if (ms <= 0) continue;
+      _reactionTotal += ms;
       _reactionCount++;
-      bestReactionMs = min(bestReactionMs ?? reactionMs!, reactionMs!);
+      bestReactionMs = min(bestReactionMs ?? ms.toDouble(), ms.toDouble());
     }
-    laneDeviation = 0.08 + 0.02 * _random.nextDouble();
-    if (_heartCount > 0 && _heartCount % 5 == 0) {
-      attempts++;
-      if (_random.nextDouble() < 0.8) blocks++;
+    _reactionSamples = samples;
+  }
+
+  /// Sample baru pada list riwayat. Riwayat dibatasi 20 entri, jadi saat
+  /// sudah penuh jumlahnya tidak bertambah — cukup ambil entri terakhir.
+  List<int> _newSamples(List<int> previous, List<int> current) {
+    if (current.isEmpty) return const [];
+
+    if (previous.isEmpty) return current;
+
+    if (current.length > previous.length) {
+      final added = current.length - previous.length;
+      return current.sublist(current.length - added);
     }
+
+    return current.last == previous.last ? const [] : [current.last];
   }
 }

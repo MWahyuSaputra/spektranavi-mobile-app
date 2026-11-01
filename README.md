@@ -39,7 +39,14 @@ perangkat. Data contoh aktif hanya melalui pengaturan sumber di atas. Tidak ada
 kartu satelit, panel peringatan, atau halaman tambahan di luar basis aplikasi asal.
 Indikator satelit pada GNSS yang sudah ada dipertahankan.
 
-Konfigurasi broker mengikuti aplikasi asal:
+Host dan port broker MQTT diisi dari aplikasi, bukan lagi lewat `flutter run`.
+Buka **Profile > Integrasi Perangkat**, ketuk kartu **Broker MQTT**, lalu isi
+host/IP (mis. `192.168.1.17` atau `broker.local`) dan port (default `1883`).
+Nilai disimpan di perangkat dan dipakai bersama oleh Vision AI serta ESP32;
+koneksi otomatis disambung ulang setelah disimpan.
+
+Opsional, `--dart-define=MQTT_BROKER_IP=...` masih bisa dipakai sebagai nilai
+awal sebelum pengguna mengubahnya di aplikasi:
 
 ```sh
 flutter run --dart-define=MQTT_BROKER_IP=192.168.1.17
@@ -47,6 +54,14 @@ flutter run --dart-define=MQTT_BROKER_IP=192.168.1.17
 
 Pengaturan `ESP32_MOCK` dan `MQTT_VISION_MOCK` yang sudah ada tetap tersedia sebagai
 override saat build. Jalankan tanpa override untuk memakai profil bawaan paket.
+
+## Arah dari aplikasi ke broker
+
+Mode Simulasi dan Mode Lari mengirim arah/aba-aba pelatih ke broker MQTT pada
+topik `spektra/v1/device/app/direction` (JSON `schema: "spektra.v1"`, `type: "direction"`,
+berisi `mode`, `direction`, `source`, dan `timestamp_ms`). Mode Simulasi
+mengirim KIRI/TENGAH/KANAN, Mode Lari mengirim MAJU/MUNDUR/KIRI/KANAN/STOP.
+Pastikan broker terhubung; kalau tidak, pengiriman hanya dicatat di log debug.
 
 ## Map pada Mode Lari
 

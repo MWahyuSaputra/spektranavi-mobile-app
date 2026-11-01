@@ -32,19 +32,33 @@ class _ModeTandingPageState extends State<ModeTandingPage> {
   @override
   void initState() {
     super.initState();
-    _metrics.record(DeviceServices.instance.esp32.data.value);
+    final esp32 = DeviceServices.instance.esp32;
+
+    // Snapshot awal: metrik dihitung sejak sesi dimulai.
+    _metrics.record(esp32.data.value);
+    esp32.data.addListener(_onTelemetry);
+
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       setState(() {
         _elapsed = DateTime.now().difference(_startTime);
-        _metrics.record(DeviceServices.instance.esp32.data.value);
       });
+    });
+  }
+
+  /// Setiap frame telemetry langsung masuk perhitungan supaya AVG BPM
+  /// dan AVG RT tampil realtime, bukan menunggu timer 1 detik.
+  void _onTelemetry() {
+    if (!mounted) return;
+    setState(() {
+      _metrics.record(DeviceServices.instance.esp32.data.value);
     });
   }
 
   @override
   void dispose() {
     _timer.cancel();
+    DeviceServices.instance.esp32.data.removeListener(_onTelemetry);
     super.dispose();
   }
 
@@ -65,8 +79,6 @@ class _ModeTandingPageState extends State<ModeTandingPage> {
       peakHeart: _metrics.peakHeart,
       midValue: _metrics.bestReactionMs == null ? "--" : "${_metrics.bestReactionMs!.round()}ms",
       midSub: _metrics.bestReactionMs == null ? "Best reaction time belum tersedia" : "Best RT",
-      rightValue: _metrics.attempts == 0 ? "--" : "${_metrics.blocks}/${_metrics.attempts}",
-      rightSub: _metrics.attempts == 0 ? "--" : "${(_metrics.blocks / _metrics.attempts * 100).round()}%",
     );
     Navigator.pop(context, session);
   }
@@ -164,15 +176,10 @@ class _ModeTandingPageState extends State<ModeTandingPage> {
                           ),
                           LiveStatBox(
                             icon: Icons.bolt_outlined,
-                            value: _metrics.averageReactionMs?.round().toString() ?? "--",
+                            value: _metrics.averageReactionMs == null
+                                ? "--"
+                                : "${_metrics.averageReactionMs!.round()}ms",
                             label: "AVG RT",
-                          ),
-                          Expanded(
-                            child: _LastLiveStatBox(
-                              icon: Icons.gps_fixed,
-                              value: "${_metrics.blocks} / ${_metrics.attempts}",
-                              label: "BLOKADE",
-                            ),
                           ),
                         ],
                       ),
@@ -336,52 +343,6 @@ class _AiStat extends StatelessWidget {
         const SizedBox(height: 2),
         Text(label, style: AppStyles.cardSubtitle),
       ],
-    );
-  }
-}
-
-class _LastLiveStatBox extends StatelessWidget {
-  final IconData icon;
-  final String value;
-  final String label;
-
-  const _LastLiveStatBox({
-    required this.icon,
-    required this.value,
-    required this.label,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 76,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 16),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              height: 1.1,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: AppStyles.statLabel,
-          ),
-        ],
-      ),
     );
   }
 }

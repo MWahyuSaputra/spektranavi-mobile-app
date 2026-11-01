@@ -3,6 +3,7 @@ import '../../app/session_metrics.dart';
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import '../../app/app_colors.dart';
 import '../../app/app_styles.dart';
 import '../../app/athlete_store.dart';
@@ -27,18 +28,103 @@ class _ModeSimulasiPageState extends State<ModeSimulasiPage> {
   late final Timer _timer;
   final SessionMetrics _metrics = SessionMetrics();
 
-  // State panel kontrol simulasi — sekarang bisa dipilih-pilih pengguna.
+  // Panel kontrol simulasi — pelatih memilih arah bola.
   static const _arahOptions = ["KIRI", "TENGAH", "KANAN"];
-  static const _polaOptions = ["KIRI", "TENGAH", "KANAN"];
 
-  int _arahBolaIndex = 1; // default: TENGAH
-  int _kecepatanIndex = 2; // default: level 3 dari 5
-  int _polaIndex = 1; // default: TENGAH
-  int _kesulitanIndex = 1; // default: level 2 dari 5
+  static const _phrases = <String, String>{
+    'KIRI': 'Ke kiri',
+    'TENGAH': 'Tengah',
+    'KANAN': 'Ke kanan',
+  };
+
+  /// Tombol hanya biru sesaat: selama suara diputar, dengan batas aman
+  /// beberapa detik kalau TTS tidak selesai.
+  static const Duration _minHighlight = Duration(milliseconds: 450);
+  static const Duration _highlightTimeout = Duration(seconds: 3);
+
+  final FlutterTts _tts = FlutterTts();
+  late final Future<void> _voiceReady;
+
+  Timer? _highlightTimer;
+  int? _activeArahIndex;
+  int _speechId = 0;
+
+  Future<void> _setupVoice() async {
+    try {
+      await _tts.setLanguage('id-ID');
+      await _tts.setSpeechRate(0.42);
+      await _tts.setVolume(1.0);
+      await _tts.setPitch(1.0);
+      await _tts.awaitSpeakCompletion(true);
+    } catch (e) {
+      debugPrint('[VOICE] Gagal menyiapkan TTS: $e');
+    }
+  }
+
+  Future<void> _selectArah(int index) async {
+    final direction = _arahOptions[index];
+    final phrase = _phrases[direction];
+    final speechId = ++_speechId;
+
+    _highlightTimer?.cancel();
+
+    setState(() {
+      _activeArahIndex = index;
+    });
+
+    // Kirim arah ke broker supaya perangkat/penerima lain bisa membacanya.
+    DeviceServices.instance.mqtt.publishDirection(
+      mode: 'simulasi',
+      direction: direction,
+    );
+
+    // Batas aman: warna kembali walau suara gagal/tidak selesai.
+    _highlightTimer = Timer(_highlightTimeout, () {
+      if (!mounted || speechId != _speechId) return;
+      setState(() => _activeArahIndex = null);
+    });
+
+    if (phrase == null) return;
+
+    final startedAt = DateTime.now();
+
+    try {
+      await _voiceReady;
+      await _tts.stop();
+
+      if (!mounted || speechId != _speechId) return;
+
+      await _tts.speak(phrase);
+    } catch (e) {
+      debugPrint('[VOICE] Gagal memutar "$phrase": $e');
+
+      if (!mounted || speechId != _speechId) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Suara "$phrase" tidak dapat diputar.'),
+        ),
+      );
+    }
+
+    if (!mounted || speechId != _speechId) return;
+
+    // Pastikan tombol tetap terlihat biru sebentar, tidak sekadar berkedip.
+    final elapsed = DateTime.now().difference(startedAt);
+    if (elapsed < _minHighlight) {
+      await Future.delayed(_minHighlight - elapsed);
+    }
+
+    if (!mounted || speechId != _speechId) return;
+
+    _highlightTimer?.cancel();
+    setState(() => _activeArahIndex = null);
+  }
 
   @override
   void initState() {
     super.initState();
+    _voiceReady = _setupVoice();
     _metrics.record(DeviceServices.instance.esp32.data.value);
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -52,6 +138,8 @@ class _ModeSimulasiPageState extends State<ModeSimulasiPage> {
   @override
   void dispose() {
     _timer.cancel();
+    _highlightTimer?.cancel();
+    _tts.stop();
     super.dispose();
   }
 
@@ -72,8 +160,6 @@ class _ModeSimulasiPageState extends State<ModeSimulasiPage> {
       peakHeart: _metrics.peakHeart,
       midValue: _metrics.bestReactionMs == null ? "--" : "${_metrics.bestReactionMs!.round()}ms",
       midSub: _metrics.bestReactionMs == null ? "Best reaction time belum tersedia" : "Best RT",
-      rightValue: _metrics.attempts == 0 ? "--" : "${_metrics.blocks}/${_metrics.attempts}",
-      rightSub: _metrics.attempts == 0 ? "--" : "${(_metrics.blocks / _metrics.attempts * 100).round()}%",
     );
     Navigator.pop(context, session);
   }
@@ -180,57 +266,8 @@ class _ModeSimulasiPageState extends State<ModeSimulasiPage> {
                         const SizedBox(height: 6),
                         _selectableRow(
                           labels: _arahOptions,
-                          selectedIndex: _arahBolaIndex,
-                          onSelect: (i) => setState(() => _arahBolaIndex = i),
-                        ),
-
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            const Icon(Icons.speed_outlined, size: 14, color: Colors.black54),
-                            const SizedBox(width: 4),
-                            const Text("KECEPATAN STIMULUS", style: AppStyles.sectionLabelDark),
-                            const Spacer(),
-                            Text("${_kecepatanIndex + 1}/5", style: AppStyles.cardSubtitle),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        _selectableLevels(
-                          count: 5,
-                          selectedIndex: _kecepatanIndex,
-                          onSelect: (i) => setState(() => _kecepatanIndex = i),
-                        ),
-
-                        const SizedBox(height: 12),
-                        Row(
-                          children: const [
-                            Icon(Icons.rotate_right_outlined, size: 14, color: Colors.black54),
-                            SizedBox(width: 4),
-                            Text("POLA", style: AppStyles.sectionLabelDark),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        _selectableRow(
-                          labels: _polaOptions,
-                          selectedIndex: _polaIndex,
-                          onSelect: (i) => setState(() => _polaIndex = i),
-                        ),
-
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            const Icon(Icons.layers_outlined, size: 14, color: Colors.black54),
-                            const SizedBox(width: 4),
-                            const Text("TINGKAT KESULITAN", style: AppStyles.sectionLabelDark),
-                            const Spacer(),
-                            Text("Lv. ${_kesulitanIndex + 1}", style: AppStyles.cardSubtitle),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        _selectableLevels(
-                          count: 5,
-                          selectedIndex: _kesulitanIndex,
-                          onSelect: (i) => setState(() => _kesulitanIndex = i),
+                          selectedIndex: _activeArahIndex,
+                          onSelect: _selectArah,
                         ),
                       ],
                     ),
@@ -278,7 +315,7 @@ class _ModeSimulasiPageState extends State<ModeSimulasiPage> {
 
   Widget _selectableRow({
     required List<String> labels,
-    required int selectedIndex,
+    required int? selectedIndex,
     required ValueChanged<int> onSelect,
   }) {
     return Row(
@@ -300,44 +337,6 @@ class _ModeSimulasiPageState extends State<ModeSimulasiPage> {
               child: Center(
                 child: Text(
                   labels[i],
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: isSelected ? Colors.white : Colors.black,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      }),
-    );
-  }
-
-  Widget _selectableLevels({
-    required int count,
-    required int selectedIndex,
-    required ValueChanged<int> onSelect,
-  }) {
-    return Row(
-      children: List.generate(count, (i) {
-        final isSelected = i == selectedIndex;
-        return Expanded(
-          child: GestureDetector(
-            onTap: () => onSelect(i),
-            child: Container(
-              height: 34,
-              margin: EdgeInsets.only(right: i == count - 1 ? 0 : 8),
-              decoration: BoxDecoration(
-                color: isSelected ? AppColors.primary : const Color(0xFFF2F2F4),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: isSelected ? AppColors.primary : Colors.transparent,
-                ),
-              ),
-              child: Center(
-                child: Text(
-                  "${i + 1}",
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,

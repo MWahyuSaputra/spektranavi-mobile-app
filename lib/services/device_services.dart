@@ -23,10 +23,16 @@ class DeviceServices {
     _started = true;
 
     // Jalankan paralel supaya satu koneksi lambat tidak menahan yang lain.
-    await Future.wait([
-      mqtt.connect(),
-      esp32.connect(),
-    ]);
+    await Future.wait([mqtt.connect(), esp32.connect()]);
+  }
+
+  /// Putuskan koneksi lalu sambungkan ulang ke broker yang baru.
+  /// Dipakai setelah host/port broker diubah di Integrasi Perangkat.
+  Future<void> restart() async {
+    mqtt.disconnect();
+    esp32.disconnect();
+    _started = false;
+    await start();
   }
 
   void dispose() {

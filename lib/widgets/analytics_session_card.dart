@@ -11,8 +11,6 @@ class AnalyticsSessionCard extends StatelessWidget {
   final String leftSub;
   final String midValue;
   final String midSub;
-  final String rightValue;
-  final String rightSub;
 
   const AnalyticsSessionCard({
     super.key,
@@ -25,8 +23,6 @@ class AnalyticsSessionCard extends StatelessWidget {
     required this.leftSub,
     required this.midValue,
     required this.midSub,
-    required this.rightValue,
-    required this.rightSub,
   });
 
   @override
@@ -85,7 +81,6 @@ class AnalyticsSessionCard extends StatelessWidget {
             children: [
               Expanded(child: _stat(icon: Icons.favorite_border, value: leftValue, sub: leftSub)),
               Expanded(child: _stat(icon: Icons.bolt_outlined, value: midValue, sub: midSub)),
-              Expanded(child: _stat(icon: Icons.shield_outlined, value: rightValue, sub: rightSub)),
             ],
           ),
         ],

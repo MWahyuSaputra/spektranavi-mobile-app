@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../app/app_colors.dart';
 import '../app/app_config.dart';
+import '../app/broker_settings.dart';
 import '../services/esp32_service.dart';
 
 class Esp32DiagnosticPage extends StatefulWidget {
@@ -72,7 +73,9 @@ class _Esp32DiagnosticPageState extends State<Esp32DiagnosticPage> {
                       onPressed: () {
                         final ok = _service.ping();
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(ok ? 'PING sent' : 'PING failed')),
+                          SnackBar(
+                            content: Text(ok ? 'PING sent' : 'PING failed'),
+                          ),
                         );
                       },
                       icon: const Icon(Icons.sync),
@@ -84,22 +87,40 @@ class _Esp32DiagnosticPageState extends State<Esp32DiagnosticPage> {
               const SizedBox(height: 12),
               _section('IMU', [
                 _row('Valid', d.imuValid.toString()),
-                _row('Heading', d.imuValid ? '${d.heading.toStringAsFixed(1)}°' : '--'),
-                _row('Roll', d.imuValid ? '${d.roll.toStringAsFixed(1)}°' : '--'),
-                _row('Pitch', d.imuValid ? '${d.pitch.toStringAsFixed(1)}°' : '--'),
+                _row(
+                  'Heading',
+                  d.imuValid ? '${d.heading.toStringAsFixed(1)}°' : '--',
+                ),
+                _row(
+                  'Roll',
+                  d.imuValid ? '${d.roll.toStringAsFixed(1)}°' : '--',
+                ),
+                _row(
+                  'Pitch',
+                  d.imuValid ? '${d.pitch.toStringAsFixed(1)}°' : '--',
+                ),
               ]),
               const SizedBox(height: 12),
               _section('GPS', [
                 _row('Valid', d.gpsValid.toString()),
-                _row('Latitude', d.gpsValid ? d.latitude.toStringAsFixed(6) : '--'),
-                _row('Longitude', d.gpsValid ? d.longitude.toStringAsFixed(6) : '--'),
+                _row(
+                  'Latitude',
+                  d.gpsValid ? d.latitude.toStringAsFixed(6) : '--',
+                ),
+                _row(
+                  'Longitude',
+                  d.gpsValid ? d.longitude.toStringAsFixed(6) : '--',
+                ),
                 _row('Satellites', d.gpsValid ? d.satellites.toString() : '--'),
               ]),
               const SizedBox(height: 12),
               _section('ECG', [
                 _row('Lead off', d.leadOff.toString()),
                 _row('ECG raw', d.ecgRaw?.toString() ?? '--'),
-                _row('BPM', d.connected ? d.heartRateBpm?.toString() ?? '--' : '--'),
+                _row(
+                  'BPM',
+                  d.connected ? d.heartRateBpm?.toString() ?? '--' : '--',
+                ),
               ]),
               const SizedBox(height: 12),
               ValueListenableBuilder<String?>(
@@ -112,7 +133,7 @@ class _Esp32DiagnosticPageState extends State<Esp32DiagnosticPage> {
               ),
               const SizedBox(height: 12),
               _section('CONFIG', [
-                _row('Broker', '${AppConfig.mqttBrokerIp}:${AppConfig.mqttBrokerPort}'),
+                _row('Broker', BrokerSettings.instance.config.value.label),
                 _row('Mock', AppConfig.esp32Mock.toString()),
                 _row('Telemetry timeout', '3 s'),
               ]),
@@ -175,7 +196,10 @@ class _Esp32DiagnosticPageState extends State<Esp32DiagnosticPage> {
         children: [
           SizedBox(width: 120, child: Text(label)),
           Expanded(
-            child: Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
           ),
         ],
       ),

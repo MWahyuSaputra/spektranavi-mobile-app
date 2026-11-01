@@ -7,12 +7,20 @@ import 'pages/auth/login_page.dart';
 import 'pages/main/main_navigation_page.dart';
 import 'pages/esp32_diagnostic_page.dart';
 import 'app/app_config.dart';
+import 'app/broker_settings.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Host/port broker MQTT dibaca dari pengaturan yang diisi pengguna di
+  // Profile > Integrasi Perangkat (bukan lagi dari --dart-define).
+  try {
+    await BrokerSettings.instance.load();
+  } catch (e) {
+    debugPrint('[Config] Gagal memuat pengaturan broker: $e');
+  }
+
   runApp(const SpektraNaviApp());
 }
 

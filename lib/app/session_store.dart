@@ -11,8 +11,6 @@ class TrainingSession {
   final int peakHeart;
   final String midValue;
   final String midSub;
-  final String rightValue;
-  final String rightSub;
 
   const TrainingSession({
     required this.mode,
@@ -23,8 +21,6 @@ class TrainingSession {
     required this.peakHeart,
     required this.midValue,
     required this.midSub,
-    required this.rightValue,
-    required this.rightSub,
   });
 
   String get durationLabel {
@@ -54,8 +50,6 @@ class TrainingSession {
       'peakHeart': peakHeart,
       'midValue': midValue,
       'midSub': midSub,
-      'rightValue': rightValue,
-      'rightSub': rightSub,
     };
   }
 
@@ -69,8 +63,6 @@ class TrainingSession {
       peakHeart: (map['peakHeart'] ?? 0) as int,
       midValue: map['midValue'] ?? '',
       midSub: map['midSub'] ?? '',
-      rightValue: map['rightValue'] ?? '',
-      rightSub: map['rightSub'] ?? '',
     );
   }
 }
@@ -103,8 +95,6 @@ class SessionStore extends ChangeNotifier {
             peakHeart: 151,
             midValue: '92%',
             midSub: 'Akurasi',
-            rightValue: '17',
-            rightSub: 'Blokade',
           ),
           TrainingSession(
             mode: 'Mode Simulasi',
@@ -115,8 +105,6 @@ class SessionStore extends ChangeNotifier {
             peakHeart: 137,
             midValue: '494ms',
             midSub: 'Best RT',
-            rightValue: '73%',
-            rightSub: 'Akurasi',
           ),
           TrainingSession(
             mode: 'Mode Lari',
@@ -127,8 +115,6 @@ class SessionStore extends ChangeNotifier {
             peakHeart: 143,
             midValue: '520ms',
             midSub: 'Best RT',
-            rightValue: '0.08m',
-            rightSub: 'Lane dev.',
           ),
         ]);
       _loaded = true;

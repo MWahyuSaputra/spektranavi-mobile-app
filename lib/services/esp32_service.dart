@@ -9,6 +9,7 @@ import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 
 import '../app/app_config.dart';
+import '../app/broker_settings.dart';
 
 /// Data telemetry dari ESP32.
 ///
@@ -111,8 +112,9 @@ class Esp32Service {
 
   bool _disposed = false;
 
-  final ValueNotifier<Esp32TelemetryData> data =
-      ValueNotifier(const Esp32TelemetryData());
+  final ValueNotifier<Esp32TelemetryData> data = ValueNotifier(
+    const Esp32TelemetryData(),
+  );
 
   /// Event MQTT terakhir, misalnya PONG.
   final ValueNotifier<String?> _lastEvent = ValueNotifier<String?>(null);
@@ -123,20 +125,15 @@ class Esp32Service {
   /// Nilai event terakhir secara langsung.
   String? get lastEventValue => _lastEvent.value;
 
-  static const String _topicTelemetry =
-      'spektra/v1/device/esp32/telemetry';
+  static const String _topicTelemetry = 'spektra/v1/device/esp32/telemetry';
 
-  static const String _topicStatus =
-      'spektra/v1/device/esp32/status';
+  static const String _topicStatus = 'spektra/v1/device/esp32/status';
 
-  static const String _topicCommand =
-      'spektra/v1/device/esp32/command';
+  static const String _topicCommand = 'spektra/v1/device/esp32/command';
 
-  static const String _topicEvent =
-      'spektra/v1/device/esp32/event';
+  static const String _topicEvent = 'spektra/v1/device/esp32/event';
 
-  static const Duration _telemetryTimeout =
-      Duration(seconds: 3);
+  static const Duration _telemetryTimeout = Duration(seconds: 3);
 
   Future<void> connect() async {
     if (_disposed) return;
@@ -150,15 +147,20 @@ class Esp32Service {
       return;
     }
 
+    final broker = BrokerSettings.instance.config.value;
+
+    if (broker.host.isEmpty) {
+      debugPrint('[MQTT/ESP32] Broker belum diatur');
+      data.value = const Esp32TelemetryData();
+      return;
+    }
+
     final clientId =
         'spektranavi_esp32_${DateTime.now().millisecondsSinceEpoch}';
 
-    final client = MqttServerClient(
-      AppConfig.mqttBrokerIp,
-      clientId,
-    );
+    final client = MqttServerClient(broker.host, clientId);
 
-    client.port = AppConfig.mqttBrokerPort;
+    client.port = broker.port;
     client.keepAlivePeriod = 20;
     client.autoReconnect = true;
     client.logging(on: false);
@@ -188,8 +190,7 @@ class Esp32Service {
       return;
     }
 
-    if (client.connectionStatus?.state !=
-        MqttConnectionState.connected) {
+    if (client.connectionStatus?.state != MqttConnectionState.connected) {
       client.disconnect();
 
       data.value = const Esp32TelemetryData();
@@ -199,7 +200,7 @@ class Esp32Service {
 
     debugPrint(
       '[MQTT/ESP32] Terhubung ke '
-      '${AppConfig.mqttBrokerIp}:${AppConfig.mqttBrokerPort}',
+      '${broker.host}:${broker.port}',
     );
 
     _subscribeTopics(client);
@@ -220,20 +221,11 @@ class Esp32Service {
   }
 
   void _subscribeTopics(MqttServerClient client) {
-    client.subscribe(
-      _topicTelemetry,
-      MqttQos.atMostOnce,
-    );
+    client.subscribe(_topicTelemetry, MqttQos.atMostOnce);
 
-    client.subscribe(
-      _topicStatus,
-      MqttQos.atMostOnce,
-    );
+    client.subscribe(_topicStatus, MqttQos.atMostOnce);
 
-    client.subscribe(
-      _topicEvent,
-      MqttQos.atMostOnce,
-    );
+    client.subscribe(_topicEvent, MqttQos.atMostOnce);
   }
 
   void _onDisconnected() {
@@ -247,44 +239,39 @@ class Esp32Service {
   void _startConnectionWatchdog() {
     _connectionWatchdog?.cancel();
 
-    _connectionWatchdog = Timer.periodic(
-      const Duration(milliseconds: 500),
-      (_) {
-        if (_disposed) return;
+    _connectionWatchdog = Timer.periodic(const Duration(milliseconds: 500), (
+      _,
+    ) {
+      if (_disposed) return;
 
-        final last = data.value.lastTelemetryAt;
+      final last = data.value.lastTelemetryAt;
 
-        if (last == null) {
-          data.value = const Esp32TelemetryData();
-          return;
-        }
+      if (last == null) {
+        data.value = const Esp32TelemetryData();
+        return;
+      }
 
-        final age = DateTime.now().difference(last);
+      final age = DateTime.now().difference(last);
 
-        if (age > _telemetryTimeout &&
-            data.value.connected) {
-          data.value = const Esp32TelemetryData();
+      if (age > _telemetryTimeout && data.value.connected) {
+        data.value = const Esp32TelemetryData();
 
-          debugPrint(
-            '[MQTT/ESP32] Telemetry timeout '
-            '(${age.inMilliseconds} ms)',
-          );
-        }
-      },
-    );
+        debugPrint(
+          '[MQTT/ESP32] Telemetry timeout '
+          '(${age.inMilliseconds} ms)',
+        );
+      }
+    });
   }
 
-  void _onMessage(
-    List<MqttReceivedMessage<MqttMessage>> events,
-  ) {
+  void _onMessage(List<MqttReceivedMessage<MqttMessage>> events) {
     if (_disposed || events.isEmpty) return;
 
     final received = events.first;
 
     final topic = received.topic;
 
-    final message =
-        received.payload as MqttPublishMessage;
+    final message = received.payload as MqttPublishMessage;
 
     final payload = MqttPublishPayload.bytesToStringAsString(
       message.payload.message,
@@ -327,20 +314,15 @@ class Esp32Service {
         return;
       }
 
-      final status =
-          decoded['status']?.toString().toLowerCase();
+      final status = decoded['status']?.toString().toLowerCase();
 
       if (status == 'online') {
-        data.value = data.value.copyWith(
-          connected: true,
-        );
+        data.value = data.value.copyWith(connected: true);
       } else if (status == 'offline') {
         data.value = const Esp32TelemetryData();
       }
     } catch (e) {
-      debugPrint(
-        '[MQTT/ESP32] Status parse error: $e',
-      );
+      debugPrint('[MQTT/ESP32] Status parse error: $e');
     }
   }
 
@@ -368,17 +350,32 @@ class Esp32Service {
 
       final d = rawData;
 
+      // Opsional: firmware yang sudah memproses ECG dapat mengirim BPM
+      // dan waktu reaksi lewat telemetry. Kalau tidak ada, nilai terakhir
+      // dipertahankan (atau tetap null).
+      final heartRateBpm = _asInt(d['heart_rate_bpm'] ?? d['heartRateBpm']);
+
+      final reactionMs = _asDouble(d['reaction_ms'] ?? d['reactionMs']);
+
+      // Kecepatan lari (m/s): dikirim firmware/dummy sebagai speed_mps.
+      final speedRaw = _asDouble(
+        d['speed_mps'] ??
+            d['speedMps'] ??
+            d['speed'] ??
+            d['speed_meters_per_second'],
+      );
+
+      final speedMps = speedRaw != null && speedRaw.isFinite && speedRaw >= 0
+          ? speedRaw
+          : null;
+
       final headingRaw = d['heading'];
       final rollRaw = d['roll'];
       final pitchRaw = d['pitch'];
 
-      final imuValid =
-          headingRaw is num &&
-          rollRaw is num &&
-          pitchRaw is num;
+      final imuValid = headingRaw is num && rollRaw is num && pitchRaw is num;
 
-      final gpsValid =
-          d['gps_valid'] == true;
+      final gpsValid = d['gps_valid'] == true;
 
       final latitudeRaw = d['latitude'];
       final longitudeRaw = d['longitude'];
@@ -387,7 +384,9 @@ class Esp32Service {
           latitudeRaw is num && latitudeRaw.isFinite && latitudeRaw.abs() <= 90;
 
       final longitudeValid =
-          longitudeRaw is num && longitudeRaw.isFinite && longitudeRaw.abs() <= 180;
+          longitudeRaw is num &&
+          longitudeRaw.isFinite &&
+          longitudeRaw.abs() <= 180;
 
       final now = DateTime.now();
 
@@ -396,52 +395,45 @@ class Esp32Service {
 
         imuValid: imuValid,
 
-        heading: imuValid
-            ? headingRaw.toDouble()
-            : data.value.heading,
+        heading: imuValid ? headingRaw.toDouble() : data.value.heading,
 
-        roll: imuValid
-            ? rollRaw.toDouble()
-            : data.value.roll,
+        roll: imuValid ? rollRaw.toDouble() : data.value.roll,
 
-        pitch: imuValid
-            ? pitchRaw.toDouble()
-            : data.value.pitch,
+        pitch: imuValid ? pitchRaw.toDouble() : data.value.pitch,
 
-        gpsValid:
-            gpsValid &&
-            latitudeValid &&
-            longitudeValid,
+        gpsValid: gpsValid && latitudeValid && longitudeValid,
 
-        latitude:
-            latitudeValid
-                ? latitudeRaw.toDouble()
-                : data.value.latitude,
+        latitude: latitudeValid ? latitudeRaw.toDouble() : data.value.latitude,
 
-        longitude:
-            longitudeValid
-                ? longitudeRaw.toDouble()
-                : data.value.longitude,
+        longitude: longitudeValid
+            ? longitudeRaw.toDouble()
+            : data.value.longitude,
 
-        satellites:
-            d['satellites'] is num
-                ? (d['satellites'] as num).toInt()
-                : 0,
+        satellites: d['satellites'] is num
+            ? (d['satellites'] as num).toInt()
+            : 0,
 
-        leadOff:
-            d['lead_off'] == true,
+        leadOff: d['lead_off'] == true,
 
-        ecgRaw:
-            d['ecg_raw'] is num
-                ? (d['ecg_raw'] as num).toInt()
-                : null,
+        ecgRaw: d['ecg_raw'] is num ? (d['ecg_raw'] as num).toInt() : null,
+
+        heartRateBpm: heartRateBpm ?? data.value.heartRateBpm,
+
+        reactionMs: reactionMs ?? data.value.reactionMs,
+
+        speedMetersPerSecond: speedMps ?? data.value.speedMetersPerSecond,
+
+        heartSamples: _appendSamples(data.value.heartSamples, heartRateBpm),
+
+        reactionSamples: _appendSamples(
+          data.value.reactionSamples,
+          reactionMs?.round(),
+        ),
 
         lastTelemetryAt: now,
       );
     } catch (e) {
-      debugPrint(
-        '[MQTT/ESP32] Telemetry parse error: $e',
-      );
+      debugPrint('[MQTT/ESP32] Telemetry parse error: $e');
     }
   }
 
@@ -461,8 +453,7 @@ class Esp32Service {
         return;
       }
 
-      final event =
-          decoded['event']?.toString();
+      final event = decoded['event']?.toString();
 
       if (event == null || event.isEmpty) {
         return;
@@ -470,14 +461,30 @@ class Esp32Service {
 
       _lastEvent.value = event;
 
-      debugPrint(
-        '[MQTT/ESP32] Event: $event',
-      );
+      debugPrint('[MQTT/ESP32] Event: $event');
     } catch (e) {
-      debugPrint(
-        '[MQTT/ESP32] Event parse error: $e',
-      );
+      debugPrint('[MQTT/ESP32] Event parse error: $e');
     }
+  }
+
+  /// Jumlah sample riwayat untuk grafik BPM / waktu reaksi.
+  static const int _maxMetricSamples = 20;
+
+  static int? _asInt(dynamic value) => value is num ? value.toInt() : null;
+
+  static double? _asDouble(dynamic value) =>
+      value is num ? value.toDouble() : null;
+
+  static List<int> _appendSamples(List<int> samples, int? value) {
+    if (value == null) return samples;
+
+    final next = <int>[...samples, value];
+
+    if (next.length > _maxMetricSamples) {
+      next.removeRange(0, next.length - _maxMetricSamples);
+    }
+
+    return List<int>.unmodifiable(next);
   }
 
   /// Kirim command PING ke ESP32.
@@ -496,9 +503,7 @@ class Esp32Service {
     if (AppConfig.esp32Mock) {
       _lastEvent.value = 'PONG';
 
-      debugPrint(
-        '[MOCK/ESP32] PING -> PONG',
-      );
+      debugPrint('[MOCK/ESP32] PING -> PONG');
 
       return true;
     }
@@ -509,35 +514,24 @@ class Esp32Service {
       return false;
     }
 
-    if (client.connectionStatus?.state !=
-        MqttConnectionState.connected) {
+    if (client.connectionStatus?.state != MqttConnectionState.connected) {
       return false;
     }
 
-    final builder =
-        MqttClientPayloadBuilder();
+    final builder = MqttClientPayloadBuilder();
 
     final command = {
       'schema': 'spektra.v1',
       'type': 'command',
       'command': 'PING',
-      'timestamp_ms':
-          DateTime.now().millisecondsSinceEpoch,
+      'timestamp_ms': DateTime.now().millisecondsSinceEpoch,
     };
 
-    builder.addString(
-      jsonEncode(command),
-    );
+    builder.addString(jsonEncode(command));
 
-    client.publishMessage(
-      _topicCommand,
-      MqttQos.atMostOnce,
-      builder.payload!,
-    );
+    client.publishMessage(_topicCommand, MqttQos.atMostOnce, builder.payload!);
 
-    debugPrint(
-      '[MQTT/ESP32] PING sent',
-    );
+    debugPrint('[MQTT/ESP32] PING sent');
 
     return true;
   }
@@ -584,20 +578,28 @@ class Esp32Service {
       data.value = Esp32TelemetryData(
         connected: true,
         imuValid: true,
-        heading: (math.atan2(eastSpeed, northSpeed) * 180 / math.pi + 360) % 360,
+        heading:
+            (math.atan2(eastSpeed, northSpeed) * 180 / math.pi + 360) % 360,
         roll: 5 * math.sin(seconds),
         pitch: 8 * math.sin(seconds * 0.7),
         gpsValid: true,
-        latitude: AppConfig.sampleLatitude +
+        latitude:
+            AppConfig.sampleLatitude +
             north / FieldProjection.earthRadiusMeters * 180 / math.pi,
-        longitude: AppConfig.sampleLongitude + east /
-            (FieldProjection.earthRadiusMeters *
-                math.cos(AppConfig.sampleLatitude * math.pi / 180)) * 180 / math.pi,
+        longitude:
+            AppConfig.sampleLongitude +
+            east /
+                (FieldProjection.earthRadiusMeters *
+                    math.cos(AppConfig.sampleLatitude * math.pi / 180)) *
+                180 /
+                math.pi,
         satellites: 7,
         leadOff: false,
         ecgRaw: 2048 + (200 * math.sin(seconds * 4)).round(),
         heartRateBpm: bpm,
-        speedMetersPerSecond: math.sqrt(eastSpeed * eastSpeed + northSpeed * northSpeed),
+        speedMetersPerSecond: math.sqrt(
+          eastSpeed * eastSpeed + northSpeed * northSpeed,
+        ),
         reactionMs: reaction,
         heartSamples: List.unmodifiable(heartHistory),
         reactionSamples: List.unmodifiable(reactionHistory),
